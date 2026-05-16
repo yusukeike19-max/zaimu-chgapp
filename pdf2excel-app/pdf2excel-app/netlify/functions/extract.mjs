@@ -11,10 +11,28 @@ export const handler = async (event) => {
   try {
     const { prevText, currText } = JSON.parse(event.body);
 
+    // ── 入力テキストの検証 ──────────────────────────────────────
+    if (!prevText || prevText.trim() === "") {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ error: "前期決算書のテキストが空です。PDFの読み取りに失敗した可能性があります。" }),
+      };
+    }
+    if (!currText || currText.trim() === "") {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ error: "当期決算書のテキストが空です。PDFの読み取りに失敗した可能性があります。" }),
+      };
+    }
+
     const system = `あなたは日本の中小企業の決算書から財務データを抽出する専門AIです。
 単位は「円」のまま抽出してください（万円・千円に変換しない）。
 見つからない項目は0としてください。
-JSONのみ出力し、前後に説明文やコードブロック記号を付けないでください。`;
+必ずJSON形式のみで出力してください。
+説明文・コードブロック記号（\`\`\`json等）は絶対に含めないでください。
+出力の最初の文字は必ず { でなければなりません。`;
 
     const userMsg = `前期と当期の決算書テキストから財務データをJSON形式で抽出してください。
 
@@ -107,8 +125,15 @@ ${currText.substring(0, 5000)}
     const apiData = await res.json();
     if (!res.ok) throw new Error(apiData.error?.message || "API error");
 
-    const rawText = apiData.content[0].text.replace(/```json|```/g, "").trim();
-    const extracted = JSON.parse(rawText);
+    // ── JSONを安全に抽出 ──────────────────────────────────────
+    const rawText = apiData.content[0].text;
+
+    // コードブロック・前後の余分なテキストを除去して { } の範囲だけ取り出す
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`AIの応答からJSONを抽出できませんでした。応答内容: ${rawText.substring(0, 200)}`);
+    }
+    const extracted = JSON.parse(jsonMatch[0]);
 
     // currが空の場合prevをコピーしてゼロ埋め
     for (const section of ["bs", "pl", "mfg", "sga"]) {
