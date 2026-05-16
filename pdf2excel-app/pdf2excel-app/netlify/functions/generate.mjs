@@ -1,6 +1,5 @@
 import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 
 // ── 赤色セル（入力可能）の完全マッピング ──────────────────────
 // 条件付き書式で空白時に赤くなるセルのみ。数式セルは含まない。
@@ -126,8 +125,7 @@ export const handler = async (event) => {
     const { data } = JSON.parse(event.body);
 
     // テンプレート読み込み
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const tplPath = join(__dirname, "../../template.xlsx");
+    const tplPath = join(process.cwd(), "template.xlsx");
     const tplBuf = readFileSync(tplPath);
 
     // ExcelJSで開く
