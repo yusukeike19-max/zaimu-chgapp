@@ -1,0 +1,8 @@
+{
+  "name": "pdf2excel-app",
+  "version": "1.0.0",
+  "description": "財務フィードバックシート自動生成アプリ",
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
+}

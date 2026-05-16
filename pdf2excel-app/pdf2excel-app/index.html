@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>財務フィードバックシート 自動入力</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #1B2A6B; --blue: #1D6FA4; --lblue: #EBF4FB;
+      --green: #1A7A52; --lgreen: #E8F6EE;
+      --red: #C0392B; --lred: #FDECEA;
+      --amber: #A0560A; --lamber: #FEF3E2;
+      --gray: #D8DDE6; --lgray: #F4F6FA;
+      --text: #1A2335; --muted: #566070;
+      --white: #FFFFFF; --radius: 10px;
+    }
+    body { font-family: "Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
+           background: #F0F2F8; color: var(--text); min-height: 100vh; }
+
+    /* Header */
+    .header { background: var(--navy); padding: 0 1.5rem; height: 56px;
+              display: flex; align-items: center; gap: 12px; }
+    .header-logo { display: flex; align-items: center; gap: 10px; color: #fff;
+                   font-size: 16px; font-weight: 500; }
+    .header-logo svg { opacity: .85; }
+
+    /* Main */
+    .main { max-width: 760px; margin: 2rem auto; padding: 0 1rem 4rem; }
+
+    /* Step indicator */
+    .steps { display: flex; align-items: center; gap: 0; margin-bottom: 2rem; }
+    .step { display: flex; align-items: center; gap: 8px; flex: 1; }
+    .step-circle { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--gray);
+                   display: flex; align-items: center; justify-content: center;
+                   font-size: 13px; font-weight: 600; color: var(--muted);
+                   background: var(--white); flex-shrink: 0; transition: all .3s; }
+    .step.active .step-circle { border-color: var(--navy); background: var(--navy); color: #fff; }
+    .step.done .step-circle { border-color: var(--green); background: var(--green); color: #fff; }
+    .step-label { font-size: 12px; color: var(--muted); line-height: 1.3; }
+    .step.active .step-label { color: var(--navy); font-weight: 500; }
+    .step.done .step-label { color: var(--green); }
+    .step-line { flex: 0 0 24px; height: 2px; background: var(--gray); margin: 0 4px; }
+    .step-line.done { background: var(--green); }
+
+    /* Card */
+    .card { background: var(--white); border-radius: var(--radius);
+            box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 1.75rem;
+            margin-bottom: 1rem; }
+    .card-title { font-size: 18px; font-weight: 500; color: var(--text);
+                  margin-bottom: .4rem; }
+    .card-desc { font-size: 13px; color: var(--muted); margin-bottom: 1.5rem; line-height: 1.6; }
+
+    /* Upload zone */
+    .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    .dz { border: 2px dashed var(--gray); border-radius: var(--radius);
+          padding: 1.75rem 1rem; text-align: center; cursor: pointer;
+          background: var(--lgray); transition: all .2s; }
+    .dz:hover, .dz.over { border-color: var(--blue); background: var(--lblue); }
+    .dz.loaded { border-style: solid; border-color: var(--green); background: var(--lgreen); }
+    .dz-icon { font-size: 36px; margin-bottom: .5rem; display: block; }
+    .dz-period { font-size: 13px; font-weight: 600; color: var(--navy); margin-bottom: 4px; }
+    .dz-name { font-size: 11px; color: var(--muted); word-break: break-all; margin-bottom: 3px; }
+    .dz-hint { font-size: 11px; color: var(--gray); }
+
+    /* Notice */
+    .notice { display: flex; gap: 8px; background: var(--lgray); border-radius: 8px;
+              padding: .75rem 1rem; font-size: 12px; color: var(--muted); margin-bottom: 1.5rem; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: .75rem; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px;
+           border-radius: 8px; font-size: 14px; cursor: pointer; border: none;
+           font-weight: 500; transition: all .15s; }
+    .btn-primary { background: var(--navy); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #253494; }
+    .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-ghost { background: transparent; border: 1.5px solid var(--gray); color: var(--muted); }
+    .btn-ghost:hover { border-color: var(--blue); color: var(--blue); }
+    .btn-download { background: var(--green); color: #fff; font-size: 15px; padding: 12px 28px; }
+    .btn-download:hover { background: #147045; }
+    .btn-retry { background: transparent; border: 1.5px solid var(--navy); color: var(--navy); }
+
+    /* Progress */
+    .progress-card { background: var(--white); border-radius: var(--radius);
+                     box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 1.75rem; }
+    .progress-title { font-size: 17px; font-weight: 500; margin-bottom: 1.25rem; }
+    .prog-track { background: var(--lgray); border-radius: 4px; height: 8px; margin-bottom: 1rem; }
+    .prog-fill { height: 100%; border-radius: 4px; background: var(--blue);
+                 transition: width .5s ease; width: 0; }
+    .prog-phase { font-size: 13px; color: var(--muted); margin-bottom: .75rem;
+                  display: flex; justify-content: space-between; }
+    .log-list { border: 1px solid var(--gray); border-radius: 8px; padding: .875rem;
+                max-height: 200px; overflow-y: auto; font-size: 12px; }
+    .log-item { display: flex; align-items: center; gap: 8px; padding: 4px 0;
+                border-bottom: 1px solid var(--lgray); }
+    .log-item:last-child { border-bottom: none; }
+    .log-icon { width: 18px; height: 18px; border-radius: 50%; display: flex;
+                align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+    .log-icon.ok { background: var(--lgreen); color: var(--green); }
+    .log-icon.run { background: var(--lblue); color: var(--blue); }
+    .log-icon.err { background: var(--lred); color: var(--red); }
+    .log-text { color: var(--text); }
+
+    /* Result */
+    .result-card { background: var(--lgreen); border: 2px solid var(--green);
+                   border-radius: var(--radius); padding: 1.75rem; text-align: center; }
+    .result-title { font-size: 20px; font-weight: 500; color: var(--green); margin-bottom: .5rem; }
+    .result-sub { font-size: 13px; color: var(--muted); margin-bottom: 1.5rem; line-height: 1.6; }
+    .result-filename { font-size: 13px; font-weight: 500; background: var(--white);
+                       border-radius: 8px; padding: .5rem 1rem; display: inline-block;
+                       color: var(--text); margin-bottom: 1.5rem; word-break: break-all; }
+
+    /* Data preview table */
+    .preview-card { background: var(--white); border-radius: var(--radius);
+                    box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 1.5rem; margin-top: 1rem; }
+    .preview-title { font-size: 14px; font-weight: 500; color: var(--muted);
+                     margin-bottom: 1rem; border-bottom: 1px solid var(--gray); padding-bottom: .5rem; }
+    .preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+    .preview-item { font-size: 12px; display: flex; justify-content: space-between;
+                    padding: 4px 0; border-bottom: 1px solid var(--lgray); }
+    .preview-label { color: var(--muted); }
+    .preview-val { font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    /* Screen */
+    .screen { display: none; }
+    .screen.show { display: block; }
+
+    /* Error */
+    .err-card { background: var(--lred); border: 1.5px solid var(--red);
+                border-radius: var(--radius); padding: 1.25rem; margin-top: 1rem; }
+    .err-title { font-size: 14px; font-weight: 500; color: var(--red); margin-bottom: .4rem; }
+    .err-msg { font-size: 12px; color: #8B1F18; }
+
+    @media (max-width: 560px) {
+      .upload-grid { grid-template-columns: 1fr; }
+      .preview-grid { grid-template-columns: 1fr; }
+      .steps { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-logo">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="3" fill="white" fill-opacity=".15"/>
+      <path d="M7 8h10M7 12h10M7 16h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    財務フィードバックシート 自動入力
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- ステップ表示 -->
+  <div class="steps" id="stepIndicator">
+    <div class="step active" id="step0">
+      <div class="step-circle">1</div>
+      <div class="step-label">PDFを<br>アップロード</div>
+    </div>
+    <div class="step-line" id="line01"></div>
+    <div class="step" id="step1">
+      <div class="step-circle">2</div>
+      <div class="step-label">AIが<br>数値を抽出</div>
+    </div>
+    <div class="step-line" id="line12"></div>
+    <div class="step" id="step2">
+      <div class="step-circle">3</div>
+      <div class="step-label">Excelを<br>ダウンロード</div>
+    </div>
+  </div>
+
+  <!-- ── STEP 0: アップロード ── -->
+  <div class="screen show" id="screen0">
+    <div class="card">
+      <h1 class="card-title">決算書PDFをアップロード</h1>
+      <p class="card-desc">
+        前期・当期の決算書PDF（貸借対照表・損益計算書・製造原価報告書を含むもの）をアップロードしてください。<br>
+        AIが数値を読み取り、財務フィードバックシートの「②決算書概要」シートに自動入力します。
+      </p>
+
+      <div class="upload-grid">
+        <div class="dz" id="dz0"
+             onclick="document.getElementById('f0').click()"
+             ondragover="onDragOver(event,0)" ondragleave="onDragLeave(0)" ondrop="onDrop(event,0)"
+             role="button" tabindex="0" aria-label="前期PDFをアップロード">
+          <input type="file" id="f0" accept=".pdf" style="display:none" onchange="setFile(0,this.files[0])">
+          <span class="dz-icon" id="dz0-icon">📄</span>
+          <div class="dz-period">前 期</div>
+          <div class="dz-name" id="dz0-name">クリックまたはドラッグ&ドロップ</div>
+          <div class="dz-hint">PDF形式のみ</div>
+        </div>
+
+        <div class="dz" id="dz1"
+             onclick="document.getElementById('f1').click()"
+             ondragover="onDragOver(event,1)" ondragleave="onDragLeave(1)" ondrop="onDrop(event,1)"
+             role="button" tabindex="0" aria-label="当期PDFをアップロード">
+          <input type="file" id="f1" accept=".pdf" style="display:none" onchange="setFile(1,this.files[0])">
+          <span class="dz-icon" id="dz1-icon">📄</span>
+          <div class="dz-period">当 期</div>
+          <div class="dz-name" id="dz1-name">クリックまたはドラッグ&ドロップ</div>
+          <div class="dz-hint">PDF形式のみ</div>
+        </div>
+      </div>
+
+      <div class="notice">
+        <span>ℹ️</span>
+        <span>PDFのテキストはブラウザ内で抽出されます。AI解析時のみ抽出テキストがAnthropicのAPIに送信されます。スキャン画像PDFは読み取れません（テキスト埋め込みPDFが必要です）。</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="startBtn" onclick="startProcess()" disabled>
+          ✨ AIで自動入力を開始
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 1: 処理中 ── -->
+  <div class="screen" id="screen1">
+    <div class="progress-card">
+      <div class="progress-title">⚙️ 処理中...</div>
+      <div class="prog-phase">
+        <span id="phaseText">準備中...</span>
+        <span id="pctText">0%</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+      <div class="log-list" id="logList"></div>
+    </div>
+  </div>
+
+  <!-- ── STEP 2: 完了 ── -->
+  <div class="screen" id="screen2">
+    <div class="result-card">
+      <div class="result-title">✅ 入力済みExcelが完成しました</div>
+      <p class="result-sub">
+        財務フィードバックシートの「②決算書概要」に前期・当期の数値が入力されました。<br>
+        ダウンロードして開くと、各シートが自動計算されます。
+      </p>
+      <div class="result-filename" id="resultFilename">ファイル名...</div>
+      <div>
+        <button class="btn btn-download" onclick="downloadFile()">
+          ⬇️ Excelをダウンロード
+        </button>
+      </div>
+    </div>
+
+    <!-- 入力データプレビュー -->
+    <div class="preview-card" id="previewCard"></div>
+
+    <div style="margin-top:1rem;text-align:center">
+      <button class="btn btn-retry" onclick="restart()">↩ 別のPDFで再度実行</button>
+    </div>
+
+    <div class="err-card" id="errCard" style="display:none">
+      <div class="err-title">⚠️ 一部の数値が取得できませんでした</div>
+      <div class="err-msg" id="errMsg"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let files = [null, null];
+let resultBase64 = '';
+let resultFilename = '';
+
+/* ── ドラッグ&ドロップ ── */
+function onDragOver(e, i) { e.preventDefault(); document.getElementById('dz'+i).classList.add('over'); }
+function onDragLeave(i) { document.getElementById('dz'+i).classList.remove('over'); }
+function onDrop(e, i) { e.preventDefault(); onDragLeave(i); const f = e.dataTransfer.files[0]; if(f) setFile(i,f); }
+
+function setFile(i, f) {
+  if (!f || f.type !== 'application/pdf') {
+    alert('PDFファイルを選択してください');
+    return;
+  }
+  files[i] = f;
+  const dz = document.getElementById('dz'+i);
+  dz.classList.add('loaded');
+  document.getElementById('dz'+i+'-icon').textContent = '✅';
+  document.getElementById('dz'+i+'-name').textContent = f.name;
+  if (files[0] && files[1]) document.getElementById('startBtn').disabled = false;
+}
+
+/* ── PDF テキスト抽出 ── */
+async function extractPDF(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const pg = await pdf.getPage(i);
+    const tc = await pg.getTextContent();
+    text += tc.items.map(x => x.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+/* ── ステップ管理 ── */
+function goScreen(n) {
+  ['screen0','screen1','screen2'].forEach((id,i) => {
+    document.getElementById(id).classList.toggle('show', i===n);
+  });
+  ['step0','step1','step2'].forEach((id,i) => {
+    const el = document.getElementById(id);
+    el.classList.toggle('active', i===n);
+    el.classList.toggle('done', i<n);
+  });
+  ['line01','line12'].forEach((id,i) => {
+    document.getElementById(id).classList.toggle('done', i<n);
+  });
+}
+
+/* ── ログ追加 ── */
+function addLog(text, type='run') {
+  const icon = type==='ok' ? '✓' : type==='err' ? '✗' : '›';
+  const el = document.createElement('div');
+  el.className = 'log-item';
+  el.innerHTML = `<span class="log-icon ${type}">${icon}</span><span class="log-text">${text}</span>`;
+  const list = document.getElementById('logList');
+  list.appendChild(el);
+  list.scrollTop = list.scrollHeight;
+}
+
+function setProgress(pct, phase) {
+  document.getElementById('progFill').style.width = pct + '%';
+  document.getElementById('pctText').textContent = pct + '%';
+  document.getElementById('phaseText').textContent = phase;
+}
+
+/* ── メイン処理 ── */
+async function startProcess() {
+  goScreen(1);
+
+  try {
+    /* 1. PDF抽出 */
+    setProgress(10, '前期PDFを読み込み中...');
+    addLog('前期PDFのテキストを抽出しています...');
+    const prevText = await extractPDF(files[0]);
+    addLog('前期PDF抽出完了', 'ok');
+
+    setProgress(25, '当期PDFを読み込み中...');
+    addLog('当期PDFのテキストを抽出しています...');
+    const currText = await extractPDF(files[1]);
+    addLog('当期PDF抽出完了', 'ok');
+
+    /* 2. AI解析 */
+    setProgress(40, 'AIが財務数値を解析中...');
+    addLog('Claude AIに財務データの抽出を依頼中...');
+
+    const extractRes = await fetch('/api/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prevText, currText }),
+    });
+
+    const extractData = await extractRes.json();
+    if (!extractRes.ok || !extractData.success) {
+      throw new Error(extractData.error || 'AI解析に失敗しました');
+    }
+
+    addLog('財務データの抽出完了', 'ok');
+    const financialData = extractData.data;
+
+    /* 3. Excel生成 */
+    setProgress(70, 'Excelテンプレートに数値を入力中...');
+    addLog(`「${financialData.company || '会社'}」の数値をExcelに書き込み中...`);
+
+    const genRes = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: financialData }),
+    });
+
+    const genData = await genRes.json();
+    if (!genRes.ok || !genData.success) {
+      throw new Error(genData.error || 'Excel生成に失敗しました');
+    }
+
+    addLog(`${genData.writeCount}件のセルに数値を入力しました`, 'ok');
+    addLog('入力済みExcelファイルが完成しました！', 'ok');
+    setProgress(100, '完了');
+
+    /* 4. 結果画面 */
+    resultBase64 = genData.fileBase64;
+    resultFilename = genData.filename;
+
+    document.getElementById('resultFilename').textContent = resultFilename;
+    buildPreview(financialData);
+
+    setTimeout(() => goScreen(2), 600);
+
+  } catch (err) {
+    addLog('エラー: ' + err.message, 'err');
+    setProgress(100, 'エラーが発生しました');
+    document.getElementById('errCard').style.display = 'block';
+    document.getElementById('errMsg').textContent =
+      err.message + '\n\nしばらく待ってから再試行するか、PDFのテキストが読み取れるか確認してください。';
+    setTimeout(() => {
+      document.getElementById('screen1').classList.remove('show');
+      document.getElementById('screen0').classList.add('show');
+    }, 3000);
+  }
+}
+
+/* ── ダウンロード ── */
+function downloadFile() {
+  const bin = atob(resultBase64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  const blob = new Blob([arr], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = resultFilename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ── プレビュー生成 ── */
+function buildPreview(d) {
+  const fmt = (n) => n ? Number(n).toLocaleString('ja-JP') + ' 円' : '—';
+  const items = [
+    ['会社名', d.company || '—'],
+    ['前期', d.prev_term || '—'],
+    ['当期', d.curr_term || '—'],
+    ['売上高（前期）', fmt(d.pl?.prev?.sales)],
+    ['売上高（当期）', fmt(d.pl?.curr?.sales)],
+    ['当期純利益（前期）', '（自動計算）'],
+    ['当期純利益（当期）', '（自動計算）'],
+    ['資産合計（前期）', '（自動計算）'],
+    ['資産合計（当期）', '（自動計算）'],
+    ['材料費（当期）', fmt(d.mfg?.curr?.material)],
+    ['長期借入金（当期）', fmt(d.bs?.curr?.lt_loan_external)],
+    ['資本金（当期）', fmt(d.bs?.curr?.capital)],
+  ];
+
+  document.getElementById('previewCard').innerHTML = `
+    <div class="preview-title">📋 入力した主な数値（確認用）</div>
+    <div class="preview-grid">
+      ${items.map(([l,v]) => `
+        <div class="preview-item">
+          <span class="preview-label">${l}</span>
+          <span class="preview-val">${v}</span>
+        </div>`).join('')}
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:.75rem">
+      ※ 合計・比率などはExcelの数式で自動計算されます。ダウンロード後に数値をご確認ください。
+    </p>`;
+}
+
+/* ── リスタート ── */
+function restart() {
+  files = [null, null];
+  resultBase64 = '';
+  ['dz0','dz1'].forEach(id => document.getElementById(id).classList.remove('loaded'));
+  document.getElementById('dz0-icon').textContent = '📄';
+  document.getElementById('dz1-icon').textContent = '📄';
+  document.getElementById('dz0-name').textContent = 'クリックまたはドラッグ&ドロップ';
+  document.getElementById('dz1-name').textContent = 'クリックまたはドラッグ&ドロップ';
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('logList').innerHTML = '';
+  document.getElementById('errCard').style.display = 'none';
+  goScreen(0);
+}
+</script>
+
+</body>
+</html>
